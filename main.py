@@ -8,7 +8,7 @@ from questions_data import (
     THEORY_13, THEORY_23
 )
 
-API_TOKEN = '8638232381:AAEkDiFAiZRtfiSLZ5D3d0NlLr7VD0gl0m8'
+API_TOKEN = '8783036380:AAHCkDUl_U3L_8sSiVrZVSC7onQiyJuiHxs'
 
 bot = telebot.TeleBot(API_TOKEN)
 
