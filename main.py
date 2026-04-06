@@ -371,6 +371,25 @@ def handle_text_messages(message):
         bot.send_message(message.chat.id, "Нажмите /start, чтобы начать подготовку к ОГЭ по географии!")
 
 
+
+import os
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'OK')
+
+def run_health_server():
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    server.serve_forever()
+
+Thread(target=run_health_server, daemon=True).start()
+
+
 if __name__ == '__main__':
     print("🤖 Бот для подготовки к ОГЭ по географии запущен...")
     bot.infinity_polling()
