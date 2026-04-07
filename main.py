@@ -1,6 +1,11 @@
 import telebot
 from telebot import types
 import random
+import os
+import time
+import threading
+import requests
+from flask import Flask, request
 from questions_data import (
     TASKS_13_SALINE, TASKS_13_PRESSURE, TASKS_13_TEMPERATURE,
     TASKS_23_DEMOGRAPHY,
@@ -11,9 +16,30 @@ from questions_data import (
 API_TOKEN = '8783036380:AAHCkDUl_U3L_8sSiVrZVSC7onQiyJuiHxs'
 
 bot = telebot.TeleBot(API_TOKEN)
-
 user_states = {}
 
+app = Flask(__name__)
+
+SERVER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'http://localhost:10000')
+
+@app.route('/')
+@app.route('/health')
+def health_check():
+    return "Bot is alive!", 200
+
+def self_ping():
+    while True:
+        try:
+            url = f"{SERVER_URL}/health"
+            requests.get(url, timeout=10)
+            print(f"Self-ping sent to {url}")
+        except Exception as e:
+            print(f"Self-ping failed: {e}")
+        time.sleep(300)
+
+def run_flask():
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
 
 def get_task_keyboard():
     keyboard = types.InlineKeyboardMarkup(row_width=2)
@@ -26,7 +52,6 @@ def get_task_keyboard():
         types.InlineKeyboardButton("📚 Теория (№23)", callback_data="theory_23")
     )
     return keyboard
-
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -42,7 +67,6 @@ def send_welcome(message):
         reply_markup=get_task_keyboard(),
         parse_mode='Markdown'
     )
-
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('start_task_'))
 def start_quiz_callback(call):
@@ -92,7 +116,6 @@ def start_quiz_callback(call):
 
     send_next_question(chat_id)
 
-
 def send_next_question(chat_id):
     if chat_id not in user_states:
         bot.send_message(chat_id, "Кажется, я забыл, на чем мы остановились. Нажми /start для начала.")
@@ -132,7 +155,6 @@ def send_next_question(chat_id):
 
     msg = bot.send_message(chat_id, question_text, reply_markup=keyboard, parse_mode='Markdown')
     user_states[chat_id]['last_msg_id'] = msg.message_id
-
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('answer_'))
 def handle_answer_callback(call):
@@ -196,7 +218,6 @@ def handle_answer_callback(call):
 
         bot.answer_callback_query(call.id, text="Неверно! Попробуй еще раз.")
 
-
 @bot.callback_query_handler(func=lambda call: call.data == 'next_question')
 def next_question_callback(call):
     chat_id = call.message.chat.id
@@ -210,7 +231,6 @@ def next_question_callback(call):
 
     user_states[chat_id]['index'] += 1
     send_next_question(chat_id)
-
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('solution_'))
 def show_solution_callback(call):
@@ -265,7 +285,6 @@ def show_solution_callback(call):
         bot.answer_callback_query(call.id, "Произошла ошибка.")
         bot.send_message(chat_id, f"Ошибка: {str(e)}. Нажмите /start для начала нового решения.")
 
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith('theory_'))
 def show_theory_callback(call):
     chat_id = call.message.chat.id
@@ -301,7 +320,6 @@ def show_theory_callback(call):
             pass
 
     bot.answer_callback_query(call.id)
-
 
 @bot.callback_query_handler(func=lambda call: call.data == 'stop_quiz')
 def stop_quiz_callback(call):
@@ -348,7 +366,6 @@ def stop_quiz_callback(call):
         parse_mode='Markdown'
     )
 
-
 @bot.callback_query_handler(func=lambda call: call.data == 'back_to_menu')
 def back_to_menu_callback(call):
     chat_id = call.message.chat.id
@@ -364,32 +381,21 @@ def back_to_menu_callback(call):
         parse_mode='Markdown'
     )
 
-
 @bot.message_handler(content_types=['text'])
 def handle_text_messages(message):
     if message.chat.id not in user_states:
         bot.send_message(message.chat.id, "Нажмите /start, чтобы начать подготовку к ОГЭ по географии!")
 
-
-
-import os
-from threading import Thread
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'OK')
-
-def run_health_server():
-    port = int(os.environ.get('PORT', 10000))
-    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
-    server.serve_forever()
-
-Thread(target=run_health_server, daemon=True).start()
-
-
 if __name__ == '__main__':
+    # Запускаем Flask в отдельном потоке
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    # Запускаем самопинг
+    ping_thread = threading.Thread(target=self_ping)
+    ping_thread.daemon = True
+    ping_thread.start()
+    
     print("🤖 Бот для подготовки к ОГЭ по географии запущен...")
     bot.infinity_polling()
